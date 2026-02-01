@@ -585,7 +585,9 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
         }
 
         // ===== STAGE 3: GENERATE ADAPTIVE RESPONSE =====
-        const responseParts = [{ text: userQuestion }];
+        // NOTE: Putting prompt in the user message, not systemInstruction
+        // systemInstruction causes "Internal error" on preview models
+        const responseParts = [{ text: responsePrompt }];
         if (image && image.base64) {
             responseParts.push({
                 inlineData: {
@@ -605,9 +607,6 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                         ...history.slice(-4).map(m => ({ role: m.role || 'user', parts: [{ text: m.content || '' }] })),
                         { role: 'user', parts: responseParts }
                     ],
-                    systemInstruction: {
-                        parts: [{ text: responsePrompt }]
-                    },
                     generationConfig: {
                         temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
                         maxOutputTokens: intent.intent === 'suggest_config' ? 2000 : 800
