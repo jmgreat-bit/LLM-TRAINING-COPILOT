@@ -663,15 +663,41 @@ function detectIntentHeuristic(message) {
 // ===== HELPER: Build Context Summary =====
 function buildContextSummary(config, analysis, userMessage) {
     const hasAnalysis = analysis && analysis.content && analysis.content.verdict;
+    const breakdown = analysis?.breakdown;
 
-    let summary = `User's Config: Model=${config.model || '?'}, GPU=${config.gpu || '?'} (${config.vram || '?'}GB), `;
-    summary += `Batch=${config.batchSize || '?'}, LR=${config.learningRate || '?'}, Epochs=${config.epochs || '?'}`;
+    let summary = `User's Config: Model=${config.modelFamily || '?'}, GPU=${config.gpu || '?'} (${config.vram || '?'}GB VRAM), `;
+    summary += `Batch=${config.batchSize || '?'}, LR=${config.learningRate || '?'}, Epochs=${config.epochs || '?'}, Precision=${config.precision || '?'}`;
 
     if (config.additionalNotes) {
         summary += `\nNotes: ${config.additionalNotes.slice(0, 200)}`;
     }
+
     if (hasAnalysis) {
-        summary += `\nAnalysis: ${analysis.content.verdict}`;
+        summary += `\n\n=== ANALYSIS RESULTS ===`;
+        summary += `\nVerdict: ${analysis.content.verdict}`;
+
+        // Add detailed hardware analysis data
+        if (breakdown?.council?.hardware) {
+            const hw = breakdown.council.hardware;
+            if (hw.oom_probability !== undefined) {
+                summary += `\nOOM Risk: ${Math.round(hw.oom_probability * 100)}%`;
+            }
+            if (hw.memory_analysis) {
+                summary += `\nEstimated Peak VRAM: ${hw.memory_analysis.peak_usage_gb || '?'}GB`;
+                summary += `\nModel Weights: ${hw.memory_analysis.model_weights_gb || '?'}GB`;
+            }
+            if (hw.reasoning) {
+                summary += `\nHardware Analysis: ${hw.reasoning.slice(0, 150)}`;
+            }
+        }
+
+        // Add recommendations if present
+        if (analysis.content.recommendations && analysis.content.recommendations.length > 0) {
+            summary += `\n\nKey Recommendations:`;
+            analysis.content.recommendations.slice(0, 3).forEach(rec => {
+                summary += `\n- ${rec.category}: ${rec.advice?.slice(0, 100) || rec}`;
+            });
+        }
     }
 
     return summary;
