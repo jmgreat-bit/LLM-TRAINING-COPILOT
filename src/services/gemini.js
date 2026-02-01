@@ -596,7 +596,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
         }
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -605,11 +605,9 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                         ...history.slice(-4).map(m => ({ role: m.role || 'user', parts: [{ text: m.content || '' }] })),
                         { role: 'user', parts: responseParts }
                     ],
-                    // NOTE: systemInstruction might not be supported on preview models
-                    // Commenting out temporarily to test if this is causing internal errors
-                    // systemInstruction: {
-                    //     parts: [{ text: responsePrompt }]
-                    // },
+                    systemInstruction: {
+                        parts: [{ text: responsePrompt }]
+                    },
                     generationConfig: {
                         temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
                         maxOutputTokens: intent.intent === 'suggest_config' ? 2000 : 800
