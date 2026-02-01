@@ -584,7 +584,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                 break;
         }
 
-        // ===== STAGE 3: GENERATE ADAPTIVE RESPONSE =====
+        // ===== STAGE 3: GENERATE ADAPTIVE RESPONSE WITH RETRY =====
         // NOTE: Putting prompt in the user message, not systemInstruction
         // systemInstruction causes "Internal error" on preview models
         const responseParts = [{ text: responsePrompt }];
@@ -597,43 +597,120 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
             });
         }
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [
-                        ...history.slice(-4).map(m => ({ role: m.role || 'user', parts: [{ text: m.content || '' }] })),
-                        { role: 'user', parts: responseParts }
-                    ],
-                    generationConfig: {
-                        temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
-                        maxOutputTokens: intent.intent === 'suggest_config' ? 2000 : 800
+        // Compress history to reduce input tokens (last 3 exchanges = 6 messages max)
+        const compressedHistory = history.slice(-6).map(m => ({
+            role: m.role || 'user',
+            parts: [{ text: (m.content || '').slice(0, 500) }] // Truncate long messages
+        }));
+
+        // Retry logic with exponential backoff
+        const MAX_RETRIES = 3;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [
+                                ...compressedHistory,
+                                { role: 'user', parts: responseParts }
+                            ],
+                            generationConfig: {
+                                temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
+                                maxOutputTokens: 2048, // Increased from 800 to prevent truncation
+                                topP: 0.95,
+                                topK: 40
+                            },
+                            // Safety settings to prevent false positives on technical ML content
+                            safetySettings: [
+                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                            ]
+                        })
                     }
-                })
+                );
+
+                const data = await response.json();
+
+                // Debug logging for finishReason
+                const candidate = data.candidates?.[0];
+                console.log('[SmartChat] Response:', {
+                    attempt,
+                    finishReason: candidate?.finishReason,
+                    textLength: candidate?.content?.parts?.[0]?.text?.length,
+                    hasError: !!data.error
+                });
+
+                // Handle API errors
+                if (data.error) {
+                    console.error(`[SmartChat] API Error (attempt ${attempt}):`, data.error);
+                    if (attempt < MAX_RETRIES && (data.error.code === 500 || data.error.message?.includes('internal'))) {
+                        // Exponential backoff: 1s, 2s, 4s
+                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                        continue;
+                    }
+                    throw new Error(data.error.message || 'API Error');
+                }
+
+                if (!candidate) {
+                    if (attempt < MAX_RETRIES) {
+                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                        continue;
+                    }
+                    throw new Error('No response candidate');
+                }
+
+                let responseText = candidate.content?.parts?.[0]?.text || '';
+
+                // Handle truncation
+                if (candidate.finishReason === 'MAX_TOKENS') {
+                    console.warn('[SmartChat] Response truncated due to MAX_TOKENS');
+                    responseText += '\n\n*[Response truncated - ask a follow-up for more details]*';
+                }
+
+                // Handle safety filter
+                if (candidate.finishReason === 'SAFETY') {
+                    console.warn('[SmartChat] Response blocked by safety filter');
+                    return {
+                        success: true,
+                        content: '⚠️ Response blocked by safety filter. Try rephrasing your question.',
+                        debug: { finishReason: 'SAFETY' }
+                    };
+                }
+
+                return {
+                    success: true,
+                    content: responseText,
+                    debug: {
+                        intent: intent.intent,
+                        confidence: intent.confidence,
+                        topic: intent.key_topic,
+                        finishReason: candidate.finishReason,
+                        attempt
+                    }
+                };
+
+            } catch (attemptError) {
+                console.error(`[SmartChat] Attempt ${attempt} failed:`, attemptError.message);
+                lastError = attemptError;
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                }
             }
-        );
-
-        const data = await response.json();
-
-        if (!data.candidates || !data.candidates[0]) {
-            console.error('Response generation failed:', data);
-            const errorMsg = data.error?.message || JSON.stringify(data);
-            return {
-                success: true,
-                content: `⚠️ API Error: ${errorMsg}\n\n(Model: gemini-3-flash-preview)`
-            };
         }
 
+        // All retries failed
+        console.error('[SmartChat] All retries exhausted:', lastError);
         return {
             success: true,
-            content: data.candidates[0].content.parts[0].text,
-            debug: {
-                intent: intent.intent,
-                confidence: intent.confidence,
-                topic: intent.key_topic
-            }
+            content: `⚠️ Chat temporarily unavailable after ${MAX_RETRIES} attempts. Please try again.\n\n(Error: ${lastError?.message || 'Unknown'})`,
+            debug: { error: lastError?.message }
         };
 
     } catch (e) {
