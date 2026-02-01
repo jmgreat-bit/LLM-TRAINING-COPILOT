@@ -311,7 +311,10 @@ CONTEXT: {{CONTEXT}}
 USER ASKED: "{{MESSAGE}}"
 TOPIC: {{TOPIC}}
 
-CRITICAL: Reference SPECIFIC values from the context (batch size, GPU model, VRAM, etc.) in your explanation.
+CRITICAL RULES:
+1. Reference SPECIFIC values from the context (batch size, GPU model, VRAM, etc.) in your explanation.
+2. NEVER use template placeholders like %s, %d, {value}, or [number]. Always use actual values.
+3. If a value is missing from context, say "not specified" instead of using a placeholder.
 
 STYLE:
 - Write in natural paragraphs (NOT bullets)
@@ -335,7 +338,10 @@ You are a senior ML engineer giving QUICK, ACTIONABLE advice.
 CONTEXT: {{CONTEXT}}
 USER ASKED: "{{MESSAGE}}"
 
-CRITICAL: Reference SPECIFIC values from their config and analysis results (OOM %, VRAM usage, etc.).
+CRITICAL RULES:
+1. Reference SPECIFIC values from their config and analysis results (OOM %, VRAM usage, etc.).
+2. NEVER use template placeholders like %s, %d, {value}, or [number]. Always use actual values.
+3. If a value is missing, say "you didn't specify X" instead of using a placeholder.
 
 STYLE:
 - 3-5 bullets MAX
@@ -601,7 +607,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                     ],
                     generationConfig: {
                         temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
-                        maxOutputTokens: intent.intent === 'explain' ? 600 : 400
+                        maxOutputTokens: intent.intent === 'suggest_config' ? 2000 : 800
                     }
                 })
             }
