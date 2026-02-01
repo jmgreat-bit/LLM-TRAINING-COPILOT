@@ -612,9 +612,10 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
 
         if (!data.candidates || !data.candidates[0]) {
             console.error('Response generation failed:', data);
+            const errorMsg = data.error?.message || JSON.stringify(data);
             return {
                 success: true,
-                content: "I hit a snag. Could you rephrase that?"
+                content: `⚠️ API Error: ${errorMsg}\n\n(Model: gemini-3.0-flash)`
             };
         }
 
