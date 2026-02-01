@@ -152,7 +152,7 @@ Output strict JSON:
 async function callGeminiJSON(systemPrompt, userPrompt, apiKey) {
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -313,7 +313,7 @@ TOPIC: {{TOPIC}}
 
 STYLE:
 - Write in natural paragraphs (NOT bullets)
-- Start with "Basically..." or "Here's the thing..." or "So..."
+- Use a conversational opener (e.g., "So...", "Basically...", "Here's the idea...", or jump straight in)
 - Use an analogy if it helps
 - 2-3 paragraphs max (150-250 words)
 - End with: "Does that make sense?" or "Want me to go deeper on [aspect]?"

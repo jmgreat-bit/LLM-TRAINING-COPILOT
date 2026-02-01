@@ -174,7 +174,7 @@ export default function ReasoningPanel({
                         <h3>Save Configuration?</h3>
                         <div className="save-prompt-actions">
                             <button className="btn btn-primary" onClick={() => { onSaveToHistory(); setShowSavePrompt(false); }}>Save</button>
-                            <button className="btn btn-ghost" onClick={() => setShowSavePrompt(false)}>Discard</button>
+                            <button className="btn btn-ghost" onClick={onDiscard}>Discard</button>
                         </div>
                     </div>
                 </div>
