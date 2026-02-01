@@ -605,9 +605,11 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                         ...history.slice(-4).map(m => ({ role: m.role || 'user', parts: [{ text: m.content || '' }] })),
                         { role: 'user', parts: responseParts }
                     ],
-                    systemInstruction: {
-                        parts: [{ text: responsePrompt }]
-                    },
+                    // NOTE: systemInstruction might not be supported on preview models
+                    // Commenting out temporarily to test if this is causing internal errors
+                    // systemInstruction: {
+                    //     parts: [{ text: responsePrompt }]
+                    // },
                     generationConfig: {
                         temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
                         maxOutputTokens: intent.intent === 'suggest_config' ? 2000 : 800
