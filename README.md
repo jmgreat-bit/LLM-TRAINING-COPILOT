@@ -1,4 +1,4 @@
-# 🧠 LLM Training Copilot
+# LLM Training Copilot
 
 > **A pre-flight check tool that predicts if your ML training will succeed BEFORE you waste hours on a failed run.**
 
@@ -6,7 +6,7 @@ Built with **Gemini 3** for the Google AI Hackathon.
 
 ---
 
-## 🎯 The Problem
+## The Problem
 
 Training LLMs often fails due to:
 - **OOM crashes** — Out of memory errors 2 hours into training
@@ -18,20 +18,20 @@ You only discover these **after** training starts. This tool tells you **before*
 
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| 🔬 **Multi-AI Analysis** | 3 specialist Gemini 3 agents: Hardware Analyst, Training Analyst, Chief Analyst |
-| 📊 **Pre-flight Predictions** | Memory usage, failure modes, training time, overfitting risk |
-| ❓ **Explain Buttons** | Click ❓ on any section for detailed explanation |
-| 💬 **Smart Chat** | Ask configuration questions — AI answers with calculations |
-| 📜 **History & Compare** | Save configs, compare side-by-side |
-| 🔑 **Demo Mode** | Works without API key for judges to test |
+| **Multi-AI Analysis** | 3 specialist Gemini 3 agents: Hardware Analyst, Training Analyst, Chief Analyst |
+| **Pre-flight Predictions** | Memory usage, failure modes, training time, overfitting risk |
+| **Explain Buttons** | Click Help on any section for detailed explanation |
+| **Smart Chat** | Ask configuration questions — AI answers with calculations |
+| **History & Compare** | Save configs, compare side-by-side |
+| **Demo Mode** | Works with specific presets (e.g. Llama-3 8B) without API key |
 
 ---
 
-## 🧠 How Multi-AI Reasoning Works
+## How Multi-AI Reasoning Works
 
 ```
 User Config → [Hardware Analyst] → Memory calculations
@@ -39,20 +39,20 @@ User Config → [Hardware Analyst] → Memory calculations
                      ↓
               [Chief Analyst] → Synthesized verdict
                      ↓
-           ✅ Safe / ⚠️ Risky / ❌ Will Fail
+           Safe / Risky / Will Fail
 ```
 
 Each specialist focuses on its domain. The Chief Analyst combines their reasoning into actionable advice.
 
 ---
 
-## 🖥️ Screenshots
+## Screenshots
 
 *[Add screenshots here]*
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Clone the repo
@@ -76,7 +76,7 @@ Visit `http://localhost:5173`
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend**: React + Vite
 - **AI**: Gemini 3 API (Pro for Reasoning Council, Flash for Chat)
@@ -84,17 +84,17 @@ Visit `http://localhost:5173`
 
 ---
 
-## 📝 Usage
+## Usage
 
 1. **Configure** — Fill in GPU, model, training parameters
 2. **Analyze** — Click "Analyze Configuration"
 3. **Review** — Check predictions across all sections
-4. **Ask** — Click ❓ for explanations or chat for follow-ups
+4. **Ask** — Click help icons for explanations or chat for follow-ups
 5. **Iterate** — Adjust config, analyze again, compare results
 
 ---
 
-## 🎯 Target Users
+## Target Users
 
 - Engineers configuring LLM fine-tuning
 - Researchers working with limited GPU resources
@@ -102,7 +102,7 @@ Visit `http://localhost:5173`
 
 ---
 
-## 📦 Project Structure
+## Project Structure
 
 ```
 src/
@@ -120,7 +120,7 @@ src/
 
 ---
 
-## 🏆 Built For
+## Built For
 
 **Google Gemini 3 API Developer Competition**
 
@@ -131,6 +131,6 @@ This project demonstrates Gemini 3's capability for:
 
 ---
 
-## 📄 License
+## License
 
 MIT
