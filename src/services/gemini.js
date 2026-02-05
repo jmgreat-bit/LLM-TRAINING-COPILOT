@@ -614,7 +614,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                 console.log(`[SmartChat] Attempt ${attempt}/${MAX_RETRIES}`);
 
                 const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -687,7 +687,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                     debug: {
                         finishReason: candidate.finishReason,
                         attempt,
-                        model: 'gemini-2.0-flash'
+                        model: 'gemini-3-flash-preview'
                     }
                 };
 
