@@ -512,84 +512,86 @@ RULES:
 - The Additional Notes should capture domain-specific context (e.g., "Akkadian translation", "low-resource language")
 `;
 
-// ===== MAIN FUNCTION: INTENT-DRIVEN CHAT =====
+// ===== SINGLE-CALL MASTER PROMPT (Synthesized from 4 AI designs) =====
+const MASTER_PROMPT = `
+You are **Vram**, a senior ML infrastructure engineer with 10+ years training LLMs on everything from RTX 3090s to H100 clusters. You're direct, opinionated, and allergic to wasting VRAM. Your goal: prevent OOM disasters before they happen.
+
+## CORE PERSONALITY
+- Speak with certainty: "That batch size will OOM. Guaranteed." not "You might consider..."
+- Cut through noise. No disclaimers, no hedging, no vague "it depends" without specifics.
+- Celebrate wins, brutal on mistakes: "32 batch on 24GB? Ambitious. And fatal."
+
+## CONTEXT (User's Current Setup)
+{{CONTEXT}}
+
+## USER'S QUESTION
+"{{MESSAGE}}"
+
+## RESPONSE STYLE ADAPTER (Auto-detect from message)
+
+**[CASUAL]** — "hi", "thanks", "ok", "cool"
+→ 1 friendly sentence max. "Hey! What are we training today?"
+
+**[EXPLAIN]** — "What is...", "How does...", "Can you explain..."
+→ 2-3 short paragraphs with analogies. End with: "Does that make sense?"
+
+**[DEBUG]** — "Why OOM?", "Why error?", "not working"
+→ Format: **Cause** (from their config) → **Evidence** (specific numbers) → **Fix** (actionable). Max 120 words.
+
+**[ADVISE]** — "What should I do?", "Help", "Fix this"
+→ 3-5 bullet points. Every bullet references THEIR specific values (GPU name, batch number). No generics.
+
+**[SUGGEST_CONFIG]** — "Give me settings", "Optimal config", "Best values"
+→ Return specific numbers: "Batch: 4, LR: 2e-4, Method: QLoRA on your RTX 4090". Justify each briefly.
+
+**[CLARIFY]** — Missing critical info (GPU, VRAM, Model not specified)
+→ Ask ONE focused question: "What GPU are you using? Need this to calculate memory."
+
+## PROACTIVE RULES (Non-Negotiable)
+
+1. **Missing Config Detective**: If GPU, VRAM, or Model is "not specified" → immediately ask before giving advice.
+
+2. **Disaster First**: If OOM Risk > 70% or Verdict is CRITICAL → lead with the warning: "🚨 Stop. Your config will crash. 136GB needed, you have 24GB. Here's why..."
+
+3. **Re-Analyze Nudge**: After suggesting ANY config changes → always end with: "💡 Update these and hit Analyze to see the impact!"
+
+4. **Dataset Probe**: If dataset info is vague → ask: "How many samples exactly? Clean or scraped data?"
+
+## CRITICAL RULES
+
+1. **Reference exact values** from context (e.g., "Your RTX 4090's 24GB", not "your GPU")
+2. **Never use placeholders** like [GPU] or {batch} — use real values or flag as missing
+3. **Be concise**: 100-150 words default. Explain mode: 200 max. Casual: 1 sentence.
+4. **One question at a time** when clarifying. No interrogation lists.
+
+## EDGE CASES
+
+- **Code requests**: Short snippet only (≤10 lines). "Here's the LoRA config for your setup..."
+- **Vague questions**: Ask what specifically: "Training speed, memory, or quality?"
+- **Conflicting info**: Point it out: "You said RTX 4090 but picked 80GB VRAM. Which is it?"
+
+Remember: You're the last line of defense between their config and a 4am OOM crash. Be helpful, be fast, be ruthless about VRAM math.
+
+Now respond to the user's message:
+`;
+
+// ===== MAIN FUNCTION: SIMPLIFIED SINGLE-CALL CHAT =====
 export async function smartChat(userMsg, history, config, analysis, configHistory, apiKey, image = null) {
-    const fullContext = buildFullContext(config, analysis, history);
     const userQuestion = userMsg || (image ? "Analyze this uploaded image" : "Help me with my configuration");
-    const recentHistory = history.slice(-3).map(m => `${m.role}: ${m.content?.slice(0, 100)}`).join('\n');
 
     try {
-        // ===== STAGE 0: DETECT INTENT =====
-        let intent = { intent: 'advise', confidence: 0.5, key_topic: '' };
-        try {
-            const intentPrompt = PROMPT_INTENT
-                .replace('{{MESSAGE}}', userQuestion)
-                .replace('{{HISTORY}}', recentHistory);
-            const intentResponse = await callGeminiText(intentPrompt, userQuestion, apiKey);
-            intent = safeParseJSON(intentResponse) || intent;
-        } catch (e) {
-            console.error('Intent detection failed:', e);
-            // Fallback: quick heuristic
-            intent = detectIntentHeuristic(userQuestion);
-        }
-
-        console.log(`[Intent Detected]: ${intent.intent} (${intent.confidence})`);
-
-        // ===== STAGE 1: BUILD LIGHT CONTEXT =====
+        // Build context summary (NO API call needed)
         const contextSummary = buildContextSummary(config, analysis, userQuestion);
 
-        // ===== STAGE 2: ROUTE TO RESPONSE MODE =====
-        let responsePrompt;
-        // Get longer history for config suggestions
-        const fullHistory = history.slice(-8).map(m => `${m.role}: ${m.content?.slice(0, 200)}`).join('\n');
+        // Build the unified prompt (NO intent detection API call)
+        const prompt = MASTER_PROMPT
+            .replace('{{CONTEXT}}', contextSummary)
+            .replace('{{MESSAGE}}', userQuestion);
 
-        switch (intent.intent) {
-            case 'explain':
-                responsePrompt = MODE_EXPLAIN
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{MESSAGE}}', userQuestion)
-                    .replace('{{TOPIC}}', intent.key_topic || userQuestion);
-                break;
-            case 'review':
-                responsePrompt = MODE_REVIEW
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-            case 'brainstorm':
-                responsePrompt = MODE_BRAINSTORM
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-            case 'debug':
-                responsePrompt = MODE_DEBUG
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-            case 'casual':
-                responsePrompt = MODE_CASUAL
-                    .replace('{{HISTORY}}', recentHistory)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-            case 'suggest_config':
-                responsePrompt = MODE_SUGGEST_CONFIG
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{HISTORY}}', fullHistory)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-            case 'advise':
-            default:
-                responsePrompt = MODE_ADVISE
-                    .replace('{{CONTEXT}}', contextSummary)
-                    .replace('{{MESSAGE}}', userQuestion);
-                break;
-        }
-
-        // ===== STAGE 3: GENERATE ADAPTIVE RESPONSE WITH RETRY =====
-        // NOTE: Putting prompt in the user message, not systemInstruction
-        // systemInstruction causes "Internal error" on preview models
-        const responseParts = [{ text: responsePrompt }];
+        // Prepare request parts
+        const requestParts = [{ text: prompt }];
         if (image && image.base64) {
-            responseParts.push({
+            requestParts.push({
                 inlineData: {
                     mimeType: image.mimeType || 'image/jpeg',
                     data: image.base64
@@ -597,35 +599,35 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
             });
         }
 
-        // Compress history to reduce input tokens (last 3 exchanges = 6 messages max)
-        const compressedHistory = history.slice(-6).map(m => ({
+        // Compress history to reduce tokens (last 4 messages only)
+        const compressedHistory = history.slice(-4).map(m => ({
             role: m.role || 'user',
-            parts: [{ text: (m.content || '').slice(0, 500) }] // Truncate long messages
+            parts: [{ text: (m.content || '').slice(0, 400) }]
         }));
 
-        // Retry logic with exponential backoff
+        // SINGLE API CALL with retry logic
         const MAX_RETRIES = 3;
         let lastError = null;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
+                console.log(`[SmartChat] Attempt ${attempt}/${MAX_RETRIES}`);
+
                 const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [
                                 ...compressedHistory,
-                                { role: 'user', parts: responseParts }
+                                { role: 'user', parts: requestParts }
                             ],
                             generationConfig: {
-                                temperature: intent.intent === 'brainstorm' ? 0.7 : 0.5,
-                                maxOutputTokens: 2048, // Increased from 800 to prevent truncation
-                                topP: 0.95,
-                                topK: 40
+                                temperature: 0.7,
+                                maxOutputTokens: 1024,
+                                topP: 0.9
                             },
-                            // Safety settings to prevent false positives on technical ML content
                             safetySettings: [
                                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
                                 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -637,9 +639,9 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                 );
 
                 const data = await response.json();
-
-                // Debug logging for finishReason
                 const candidate = data.candidates?.[0];
+
+                // Log for debugging
                 console.log('[SmartChat] Response:', {
                     attempt,
                     finishReason: candidate?.finishReason,
@@ -647,12 +649,11 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                     hasError: !!data.error
                 });
 
-                // Handle API errors
+                // Handle errors
                 if (data.error) {
-                    console.error(`[SmartChat] API Error (attempt ${attempt}):`, data.error);
-                    if (attempt < MAX_RETRIES && (data.error.code === 500 || data.error.message?.includes('internal'))) {
-                        // Exponential backoff: 1s, 2s, 4s
-                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                    console.error(`[SmartChat] API Error:`, data.error);
+                    if (attempt < MAX_RETRIES) {
+                        await new Promise(r => setTimeout(r, 1500 * attempt));
                         continue;
                     }
                     throw new Error(data.error.message || 'API Error');
@@ -660,26 +661,22 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
 
                 if (!candidate) {
                     if (attempt < MAX_RETRIES) {
-                        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                        await new Promise(r => setTimeout(r, 1500 * attempt));
                         continue;
                     }
-                    throw new Error('No response candidate');
+                    throw new Error('No response from model');
                 }
 
                 let responseText = candidate.content?.parts?.[0]?.text || '';
 
-                // Handle truncation
+                // Handle edge cases
                 if (candidate.finishReason === 'MAX_TOKENS') {
-                    console.warn('[SmartChat] Response truncated due to MAX_TOKENS');
-                    responseText += '\n\n*[Response truncated - ask a follow-up for more details]*';
+                    responseText += '\n\n*[Response cut short - ask a follow-up for more]*';
                 }
-
-                // Handle safety filter
                 if (candidate.finishReason === 'SAFETY') {
-                    console.warn('[SmartChat] Response blocked by safety filter');
                     return {
                         success: true,
-                        content: '⚠️ Response blocked by safety filter. Try rephrasing your question.',
+                        content: '⚠️ Response blocked by safety filter. Try rephrasing.',
                         debug: { finishReason: 'SAFETY' }
                     };
                 }
@@ -688,11 +685,9 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                     success: true,
                     content: responseText,
                     debug: {
-                        intent: intent.intent,
-                        confidence: intent.confidence,
-                        topic: intent.key_topic,
                         finishReason: candidate.finishReason,
-                        attempt
+                        attempt,
+                        model: 'gemini-2.0-flash'
                     }
                 };
 
@@ -700,21 +695,20 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                 console.error(`[SmartChat] Attempt ${attempt} failed:`, attemptError.message);
                 lastError = attemptError;
                 if (attempt < MAX_RETRIES) {
-                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                    await new Promise(r => setTimeout(r, 1500 * attempt));
                 }
             }
         }
 
         // All retries failed
-        console.error('[SmartChat] All retries exhausted:', lastError);
         return {
             success: true,
-            content: `⚠️ Chat temporarily unavailable after ${MAX_RETRIES} attempts. Please try again.\n\n(Error: ${lastError?.message || 'Unknown'})`,
+            content: `⚠️ Chat unavailable after ${MAX_RETRIES} attempts. Try again in a moment.\n\n(${lastError?.message || 'Unknown error'})`,
             debug: { error: lastError?.message }
         };
 
     } catch (e) {
-        console.error('SmartChat error:', e);
+        console.error('[SmartChat] Fatal error:', e);
         return { success: false, error: e.message };
     }
 }
