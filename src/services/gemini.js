@@ -646,22 +646,38 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                     attempt,
                     finishReason: candidate?.finishReason,
                     textLength: candidate?.content?.parts?.[0]?.text?.length,
-                    hasError: !!data.error
+                    hasError: !!data.error,
+                    errorMessage: data.error?.message
                 });
 
-                // Handle errors
+                // Handle errors with specific retry logic
                 if (data.error) {
-                    console.error(`[SmartChat] API Error:`, data.error);
-                    if (attempt < MAX_RETRIES) {
-                        await new Promise(r => setTimeout(r, 1500 * attempt));
+                    const errorMsg = data.error.message || '';
+                    const isInternalError = errorMsg.toLowerCase().includes('internal') ||
+                        data.error.code === 500 ||
+                        data.error.status === 'INTERNAL';
+
+                    console.error(`[SmartChat] API Error (attempt ${attempt}):`, {
+                        message: errorMsg,
+                        code: data.error.code,
+                        isInternalError
+                    });
+
+                    // Retry on internal errors with longer backoff
+                    if (attempt < MAX_RETRIES && isInternalError) {
+                        const delay = 2000 * attempt; // 2s, 4s, 6s
+                        console.log(`[SmartChat] Retrying after ${delay}ms...`);
+                        await new Promise(r => setTimeout(r, delay));
                         continue;
                     }
-                    throw new Error(data.error.message || 'API Error');
+
+                    throw new Error(errorMsg || 'API Error');
                 }
 
                 if (!candidate) {
+                    console.warn('[SmartChat] No candidate in response');
                     if (attempt < MAX_RETRIES) {
-                        await new Promise(r => setTimeout(r, 1500 * attempt));
+                        await new Promise(r => setTimeout(r, 2000 * attempt));
                         continue;
                     }
                     throw new Error('No response from model');
@@ -678,6 +694,7 @@ export async function smartChat(userMsg, history, config, analysis, configHistor
                         success: true,
                         content: '⚠️ Response blocked by safety filter. Try rephrasing.',
                         debug: { finishReason: 'SAFETY' }
+
                     };
                 }
 
